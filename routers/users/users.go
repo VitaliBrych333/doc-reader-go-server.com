@@ -1,16 +1,16 @@
 package users
 
 import (
-	"fmt"
-	"log"
-	"net/http"
-	"database/sql"
-	"github.com/gin-gonic/gin"
+    "fmt"
+    "log"
+    "net/http"
+    "database/sql"
+    "github.com/gin-gonic/gin"
 )
 
 func Routes(route *gin.Engine, authenticateMiddleware gin.HandlerFunc) {
     // only for dev testing (it's not necessary)
-	//---------------use HTML templates-----------------
+    //---------------use HTML templates-----------------
     route.GET("/users", authenticateMiddleware, getUsersPage)
 
     route.GET("/newUser", authenticateMiddleware, func(context *gin.Context) {
@@ -18,7 +18,7 @@ func Routes(route *gin.Engine, authenticateMiddleware gin.HandlerFunc) {
             "Title": "New User",
         })
     })
-	//--------------------------------------------------
+    //--------------------------------------------------
 
     user := route.Group("user")
     {
@@ -65,10 +65,10 @@ func getUsersPage(context *gin.Context) {
 }
 
 func getUserById(context *gin.Context) {
-	id := context.Param("id")
-	db := context.MustGet("DB").(*sql.DB)
+    id := context.Param("id")
+    db := context.MustGet("DB").(*sql.DB)
 
-	form := sqlGetUserById(db, id)
+    form := sqlGetUserById(db, id)
     form.Title = "Edit"
 
     context.HTML(http.StatusOK, "form.html", form)
