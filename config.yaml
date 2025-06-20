@@ -1,0 +1,10 @@
+database:
+  user: freedb_go_user
+  password: hgRVM?nJG$PVkN4
+  net: tcp
+  addres: sql.freedb.tech
+  dbName: freedb_MySqlDB
+
+server:
+  host: localhost
+  port: 8081

@@ -1,18 +1,35 @@
 package main
 
 import (
+    "os"
     "fmt"
     "log"
     "net/http"
     "slices"
     "time"
     "database/sql"
+    "gopkg.in/yaml.v3"
     "github.com/gin-gonic/gin"
     "github.com/go-sql-driver/mysql"
     "github.com/golang-jwt/jwt/v5"
     "doc-reader-go-server.com/routers/documents"
     "doc-reader-go-server.com/routers/users"
 )
+
+type Conf struct {
+    DataBase struct {
+        User     string `yaml:"user"`
+        Password string `yaml:"password"`
+        Net      string `yaml:"net"`
+        Addres   string `yaml:"addres"`
+        DBName   string `yaml:"dbName"`
+    }
+
+    Server struct {
+        Host     string `yaml:"host"`
+        Port     string `yaml:"port"`
+    }
+}
 
 type User struct {
     Id         int    `json:"id"`
@@ -23,6 +40,85 @@ type User struct {
     Password   string `json:"password"`
     Role       string `json:"role"`
     Info       string `json:"info"`
+}
+
+var c Conf
+// Add a new global variable for the secret key
+var secretKey = []byte("your-secret-key")
+var loggedInUser string
+
+func main() {
+    f, err := os.ReadFile("config.yaml")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := yaml.Unmarshal(f, &c); err != nil {
+		log.Fatal(err)
+	}
+
+    db := connectDB()
+    defer db.Close()
+
+    server := gin.Default()
+    server.Use(setDB(db))
+    server.Use(CORSMiddleware())
+
+    // only for dev testing (it's not necessary)
+    //---------------use HTML templates-----------------
+    server.LoadHTMLGlob("templates/*")
+    server.Static("/static", "./static")
+    server.GET("/register", func(context *gin.Context) {
+        context.HTML(http.StatusOK, "form.html", gin.H{
+            "Title": "Register",
+        })
+    })
+    //--------------------------------------------------
+
+    server.POST("/login", handleLogin)
+    server.GET("/logout", func(context *gin.Context) {
+        loggedInUser = ""
+        context.SetCookie("token", "", -1, "/", c.Server.Host, false, true)
+        context.Redirect(http.StatusSeeOther, "/")
+    })
+
+    server.POST("/register", registerUser)
+
+    documents.Routes(server, authenticateMiddleware)
+    users.Routes(server, authenticateMiddleware)
+
+    server.GET("/", func(context *gin.Context) {
+        context.Redirect(http.StatusMovedPermanently, "/users")
+    })
+
+    server.Run(":" + c.Server.Port) // listen and serve on 0.0.0.0:8081 (for windows "localhost:8081")
+}
+
+func connectDB() *sql.DB {
+    cfg := mysql.Config{
+        User:                 c.DataBase.User,
+        Passwd:               c.DataBase.Password,
+        Net:                  c.DataBase.Net,
+        Addr:                 c.DataBase.Addres,
+        DBName:               c.DataBase.DBName,
+        AllowNativePasswords: true,
+    }
+
+    db, err := sql.Open("mysql", cfg.FormatDSN())
+
+    if err != nil {
+        panic(err)
+    }
+
+    pingErr := db.Ping()
+
+    if pingErr != nil {
+        log.Fatal(pingErr)
+    }
+
+    fmt.Println("Connected!")
+
+    return db
 }
 
 // middleware
@@ -51,75 +147,6 @@ func CORSMiddleware() gin.HandlerFunc {
     }
 }
 
-func connectDB() *sql.DB {
-    cfg := mysql.Config{
-        User:                 "freedb_user_go",
-        Passwd:               "kVjXrPrT?*tF*9d",
-        Net:                  "tcp",
-        Addr:                 "sql.freedb.tech",
-        DBName:               "freedb_MySqlDB",
-        AllowNativePasswords: true,
-    }
-
-    db, err := sql.Open("mysql", cfg.FormatDSN())
-
-    if err != nil {
-        panic(err)
-    }
-
-    pingErr := db.Ping()
-
-    if pingErr != nil {
-        log.Fatal(pingErr)
-    }
-
-    fmt.Println("Connected!")
-
-    return db
-}
-
-// Add a new global variable for the secret key
-var secretKey = []byte("your-secret-key")
-var loggedInUser string
-
-func main() {
-    db := connectDB()
-    defer db.Close()
-
-    server := gin.Default()
-    server.Use(setDB(db))
-    server.Use(CORSMiddleware())
-
-    // only for dev testing (it's not necessary)
-    //---------------use HTML templates-----------------
-    server.LoadHTMLGlob("templates/*")
-    server.Static("/static", "./static")
-    server.GET("/register", func(context *gin.Context) {
-        context.HTML(http.StatusOK, "form.html", gin.H{
-            "Title": "Register",
-        })
-    })
-    //--------------------------------------------------
-
-    server.POST("/login", handleLogin)
-    server.GET("/logout", func(context *gin.Context) {
-        loggedInUser = ""
-        context.SetCookie("token", "", -1, "/", "localhost", false, true)
-        context.Redirect(http.StatusSeeOther, "/")
-    })
-
-    server.POST("/register", registerUser)
-
-    documents.Routes(server, authenticateMiddleware)
-    users.Routes(server, authenticateMiddleware)
-
-    server.GET("/", func(context *gin.Context) {
-        context.Redirect(http.StatusMovedPermanently, "/users")
-    })
-
-    server.Run(":8081") // listen and serve on 0.0.0.0:8081 (for windows "localhost:8081")
-}
-
 func handleLogin(context *gin.Context) {
     logUser := User{}
 
@@ -141,7 +168,7 @@ func handleLogin(context *gin.Context) {
 
         loggedInUser = logUser.Email
         
-        context.SetCookie("token", tokenString, 3600, "/", "localhost", false, true) // need to change form locahost on domain
+        context.SetCookie("token", tokenString, 3600, "/", c.Server.Host, false, true) // need to change from locahost on domain
         context.JSON(http.StatusOK, gin.H{"userId": allUsers[idx].User_Id, "status": "Success"})
 
     } else {
@@ -162,7 +189,7 @@ func createToken(username string) (string, error) {
         "sub": username,                         // Subject (user identifier)
         "iss": "documents-reader-app",           // Issuer
         "aud": getRole(username),                // Audience (user role)
-        "exp": time.Now().Add(time.Hour).Unix(), // Expiration time
+        "exp": time.Now().Add(time.Hour).Unix(), // Expiration time 1 hour
         "iat": time.Now().Unix(),                // Issued at
     })
 
