@@ -1,0 +1,10 @@
+database:
+  user: '' # your user (ex. freedb_{your_user_name})
+  password: '' # your password (ex. for freedb.tech)
+  net: tcp
+  addres: '' # your addres DB (ex. sql.freedb.tech)
+  dbName: '' # your name DB (ex. freedb_{your_DB_name})
+
+server:
+  host: localhost # your server domain (ex. {your_name}.leapcell.app)
+  port: 8080
