@@ -6,5 +6,5 @@ database:
   dbName: '' # your name DB (ex. freedb_{your_DB_name})
 
 server:
-  host: localhost # your server domain (ex. {your_name}.leapcell.app)
+  host: localhost # your server domain (ex. {your_name}.up.railway.app)
   port: 8080
